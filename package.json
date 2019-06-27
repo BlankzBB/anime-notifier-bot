@@ -1,0 +1,24 @@
+{
+  "name": "anime-notifier-bot",
+  "version": "1.0.0",
+  "description": "notifies you about anime",
+  "main": "main.js",
+  "dependencies": {
+    "eris": "^0.10.0",
+    "node-fetch": "^2.6.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OneDex/anime-notifier-bot.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/OneDex/anime-notifier-bot/issues"
+  },
+  "homepage": "https://github.com/OneDex/anime-notifier-bot#readme"
+}
