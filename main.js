@@ -2,7 +2,11 @@
 /* eslint-disable no-console */
 const Eris = require('eris');
 const fetch = require('node-fetch');
+const sqlite3 = require('sqlite3');
+// const schedule = require('node-schedule');
 const login = require('./config/login.json');
+
+const db = new sqlite3.Database('database.db');
 
 const apiURL = 'https://graphql.anilist.co';
 const client = new Eris.CommandClient(login.discord, {}, {
@@ -14,6 +18,31 @@ const client = new Eris.CommandClient(login.discord, {}, {
 
 client.connect();
 
+client.registerCommand('notifyme', (message, args) => {
+  const userSearch = args.join(' ');
+  const vars = {
+    status: 'RELEASING',
+    search: userSearch,
+    type: 'ANIME',
+    page: 1,
+    perPage: 1,
+  };
+  apiCall(query, vars, (tRes) => {
+    const res = tRes[0];
+    db.all('SELECT * FROM watching WHERE userID = (?)', [message.member.id], (err, row) => {
+      if (err || row.length === 0) {
+        db.run('INSERT INTO watching (userID, malID, aniID, nextEP) values (?,?,?,?)', [message.member.id, res.idMal, res.id, res.nextAiringEpisode.airingAt], (insErr) => {
+          if (insErr) {
+            console.log(insErr);
+          }
+        });
+      }
+    });
+    setTimeout(() => {
+      // do things here when the episode airs
+    },res.nextAiringEpisode.timeUntilAiring * 1000)
+  });
+});
 client.registerCommand('search', (message, args) => {
   const search = [];
 
@@ -39,7 +68,7 @@ client.registerCommand('search', (message, args) => {
     }
   }
   vars = Object.assign({ perPage: pn }, vars);
-  
+
   args.forEach((i, index) => {
     if (index > typeLoc && index > pnLoc) {
       search.push(i);
@@ -49,38 +78,6 @@ client.registerCommand('search', (message, args) => {
   vars = Object.assign({ search: txtSearch }, vars);
 
   // console.log(vars);
-  const query = `query ($id: Int, $page: Int, $perPage: Int, $search: String, $type: MediaType) {
-    Page (page: $page, perPage: $perPage) {
-      media (id: $id, search: $search, type: $type) {
-        id
-        idMal
-        title {
-          romaji,
-          english,
-          native
-        }
-        type
-        status
-        updatedAt
-        startDate {
-          year
-          month
-          day
-        }
-        endDate {
-          year
-          month
-          day
-        }
-        episodes
-        nextAiringEpisode {
-          episode
-          airingAt
-          timeUntilAiring
-        }
-      }
-    }
-  }`;
 
   apiCall(query, vars, (searchList) => {
     // console.log(searchList);
@@ -103,6 +100,7 @@ function apiCall(query, vars, callback) {
   fetch(apiURL, options)
     .then(res => res.json())
     .then((res) => {
+      console.log(res);
       const searchList = res.data.Page.media;
       callback(searchList);
     });
@@ -126,6 +124,39 @@ function messageCreator(message, searchList) {
 }
 
 client.registerCommand('ping', (message) => {
-  message.channel.createMessage('pong!')
-})
+  message.channel.createMessage('pong!');
+});
 client.registerCommandAlias('Ping', 'ping');
+
+const query = `query ($id: Int, $page: Int, $perPage: Int, $search: String, $type: MediaType) {
+  Page (page: $page, perPage: $perPage) {
+    media (id: $id, search: $search, type: $type) {
+      id
+      idMal
+      title {
+        romaji,
+        english,
+        native
+      }
+      type
+      status
+      updatedAt
+      startDate {
+        year
+        month
+        day
+      }
+      endDate {
+        year
+        month
+        day
+      }
+      episodes
+      nextAiringEpisode {
+        episode
+        airingAt
+        timeUntilAiring
+      }
+    }
+  }
+}`;
