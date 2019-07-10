@@ -9,7 +9,7 @@ node_modules/
 backups/
 .DS_Store
 npm-debug.log*
-
+config/
 yarn.lock
 
 *.db

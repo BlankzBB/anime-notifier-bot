@@ -1,3 +1,5 @@
+/* TODO
+* Find a way to get next EP without making user redo command */
 /* eslint-disable no-use-before-define */
 /* eslint-disable no-console */
 const Eris = require('eris');
@@ -7,7 +9,6 @@ const sqlite3 = require('sqlite3');
 const login = require('./config/login.json');
 
 const db = new sqlite3.Database('database.db');
-
 const apiURL = 'https://graphql.anilist.co';
 const client = new Eris.CommandClient(login.discord, {}, {
   defaultHelpCommand: false,
@@ -15,10 +16,12 @@ const client = new Eris.CommandClient(login.discord, {}, {
   owner: 'OneDex',
   prefix: '!',
 });
-
 client.connect();
+const malLink = 'https://myanimelist.net/anime/';
+const aniLink = 'https://anilist.co/anime/';
+bigBrother();
 
-client.registerCommand('notifyme', (message, args) => {
+client.registerCommand('notifyme', async (message, args) => {
   const userSearch = args.join(' ');
   const vars = {
     status: 'RELEASING',
@@ -27,65 +30,38 @@ client.registerCommand('notifyme', (message, args) => {
     page: 1,
     perPage: 1,
   };
-  apiCall(query, vars, (tRes) => {
-    const res = tRes[0];
-    db.all('SELECT * FROM watching WHERE userID = (?)', [message.member.id], (err, row) => {
-      if (err || row.length === 0) {
-        db.run('INSERT INTO watching (userID, malID, aniID, nextEP) values (?,?,?,?)', [message.member.id, res.idMal, res.id, res.nextAiringEpisode.airingAt], (insErr) => {
-          if (insErr) {
-            console.log(insErr);
-          }
-        });
-      }
+  const searchList = await apiCall(query, vars);
+  db.all('SELECT * FROM watching WHERE malID = (?)', [searchList.idMal], (err, row) => {
+    if (err || row.length === 0) {
+      db.run('INSERT INTO watching (userID, malID, aniID, nextEP) values (?,?,?,?,?)', [message.member.id, searchList.idMal, searchList.id, searchList.nextAiringEpisode.airingAt, searchList.title.romaji], insErr => console.log(insErr));
+    }
+  });
+});
+async function bigBrother() {
+  setInterval(async () => {
+    const notifiedIDs = [];
+    await db.all('select * FROM watching', (err, row) => {
+      row.forEach((e) => {
+        const time = Math.round((new Date()).getTime() / 1000);
+        if (time >= e.nextEP) {
+          notificationSender(e);
+          notifiedIDs.push(e.malID);
+        }
+      });
     });
-    setTimeout(() => {
-      // do things here when the episode airs
-    },res.nextAiringEpisode.timeUntilAiring * 1000)
-  });
-});
-client.registerCommand('search', (message, args) => {
-  const search = [];
+    notifiedIDs.forEach((i) => {
+      db.run('DELETE * FROM watching WHERE malID = (?)', [i]);
+    });
+  }, 3600000);
+}
 
-  let vars = {
-    page: 1,
-  };
-
-  let typeLoc = -1;
-  if (args.indexOf('-t') !== -1) {
-    typeLoc = args.indexOf('-t') + 1;
-    vars = Object.assign({ type: args[typeLoc].toUpperCase() }, vars);
-  }
-
-  let pn = 3;
-  let pnLoc = -1;
-  if (args.indexOf('-n') !== -1) {
-    pnLoc = args.indexOf('-n') + 1;
-    if (args[pnLoc] < 10) {
-      pn = Number(args[pnLoc]);
-    }
-    if (args[pnLoc] > 10) {
-      pn = 3;
-    }
-  }
-  vars = Object.assign({ perPage: pn }, vars);
-
-  args.forEach((i, index) => {
-    if (index > typeLoc && index > pnLoc) {
-      search.push(i);
-    }
-  });
-  const txtSearch = search.join(' ');
-  vars = Object.assign({ search: txtSearch }, vars);
-
-  // console.log(vars);
-
-  apiCall(query, vars, (searchList) => {
-    // console.log(searchList);
-    messageCreator(message, searchList);
-  });
-});
-
-function apiCall(query, vars, callback) {
+function notificationSender(row) {
+  const ID = client.getDMChannel(row.userID);
+  client.createMessage(ID, `${row.title} is now airing. 
+  Mal: ${malLink + row.malID}
+  Anilist: ${aniLink + row.aniID}`);
+}
+async function apiCall(query, vars) {
   const options = {
     method: 'POST',
     headers: {
@@ -97,36 +73,11 @@ function apiCall(query, vars, callback) {
       variables: vars,
     }),
   };
-  fetch(apiURL, options)
+  const searchList = await fetch(apiURL, options)
     .then(res => res.json())
-    .then((res) => {
-      console.log(res);
-      const searchList = res.data.Page.media;
-      callback(searchList);
-    });
+    .then(res => res.data.Page.media);
+  return searchList[0];
 }
-
-function messageCreator(message, searchList) {
-  const msg = [];
-  for (i = 0; i < searchList.length; i++) {
-    let eTitle;
-    if (searchList[i].title.english == null) {
-      eTitle = searchList[i].title.romaji;
-    }
-    if (searchList[i].title.english != null) {
-      eTitle = searchList[i].title.english;
-    }
-    msg.push(`title: ${searchList[i].title.romaji} (${eTitle})\ntype: ${searchList[i].type}\nlink: https://myanimelist.net/${searchList[i].type.toLowerCase()}/${searchList[i].idMal} `);
-  }
-  const res = msg.join('\n\n');
-  // console.log(res);
-  message.channel.createMessage(`${res}`);
-}
-
-client.registerCommand('ping', (message) => {
-  message.channel.createMessage('pong!');
-});
-client.registerCommandAlias('Ping', 'ping');
 
 const query = `query ($id: Int, $page: Int, $perPage: Int, $search: String, $type: MediaType) {
   Page (page: $page, perPage: $perPage) {
