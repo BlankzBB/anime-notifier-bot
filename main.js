@@ -19,9 +19,43 @@ const client = new Eris.CommandClient(login.discord, {}, {
 client.connect();
 const malLink = 'https://myanimelist.net/anime/';
 const aniLink = 'https://anilist.co/anime/';
+const watchingTimeout = 3600000;// 3600000
+const updateTimeout = 3600000;
 bigBrother();
 
 client.registerCommand('notifyme', async (message, args) => {
+  const userSearch = args.join(' ');
+  console.log(userSearch);
+  const vars = {
+    status: 'RELEASING',
+    search: userSearch,
+    type: 'ANIME',
+    page: 1,
+    perPage: 1,
+  };
+
+  const searchList = await apiCall(vars);
+  let c;
+  if (searchList.data.Page.media) {
+    console.log(searchList.data.Page.media[0].title);
+    Object.keys(searchList.data.Page.media[0].title).forEach((k) => {
+      if (searchList.data.Page.media[0].title[k].toLowerCase() === userSearch.toLowerCase()) {
+        c = true;
+      }
+    });
+    if (c === true) {
+      console.log(c);
+      const search = searchList.data.Page.media[0];
+      await db.all('SELECT * FROM watching WHERE malID = (?)', [search.idMal], (err, row) => {
+        if (err || row.length === 0) {
+          db.run('INSERT INTO watching (userID, malID, aniID, nextEP, title, notified) values (?,?,?,?,?,?)', [message.member.id, search.idMal, search.id, search.nextAiringEpisode.airingAt, search.title.romaji, 0]);
+        }
+      });
+    }
+  }
+});
+
+client.registerCommand('unnotifyme', async (message, args) => {
   const userSearch = args.join(' ');
   const vars = {
     status: 'RELEASING',
@@ -30,38 +64,70 @@ client.registerCommand('notifyme', async (message, args) => {
     page: 1,
     perPage: 1,
   };
-  const searchList = await apiCall(query, vars);
-  db.all('SELECT * FROM watching WHERE malID = (?)', [searchList.idMal], (err, row) => {
-    if (err || row.length === 0) {
-      db.run('INSERT INTO watching (userID, malID, aniID, nextEP) values (?,?,?,?,?)', [message.member.id, searchList.idMal, searchList.id, searchList.nextAiringEpisode.airingAt, searchList.title.romaji], insErr => console.log(insErr));
+  const searchList = await apiCall(vars);
+  let c;
+  if (searchList.data.Page.media) {
+    console.log(searchList.data.Page.media[0].title);
+    Object.keys(searchList.data.Page.media[0].title).forEach((k) => {
+      if (searchList.data.Page.media[0].title[k].toLowerCase() === userSearch.toLowerCase()) {
+        c = true;
+      }
+    });
+    if (c === true) {
+      const search = searchList.data.Page.media[0];
+      db.run('DELETE FROM watching WHERE malID = (?) AND userID = (?)', [search.idMal, message.member.id]);
     }
-  });
+  }
 });
-async function bigBrother() {
+
+function bigBrother() {
   setInterval(async () => {
-    const notifiedIDs = [];
     await db.all('select * FROM watching', (err, row) => {
-      row.forEach((e) => {
+      row.forEach(async (e) => {
         const time = Math.round((new Date()).getTime() / 1000);
-        if (time >= e.nextEP) {
-          notificationSender(e);
-          notifiedIDs.push(e.malID);
+        if (time >= e.nextEP && e.notified === 0) {
+          // console.log(e)
+          await notificationSender(e);
+          db.run('UPDATE watching SET notified = (?) WHERE malID = (?) AND userID = (?)', [1, e.malID, e.userID]);
         }
       });
     });
-    notifiedIDs.forEach((i) => {
-      db.run('DELETE * FROM watching WHERE malID = (?)', [i]);
+  }, watchingTimeout);
+}
+checkUpdate();
+async function checkUpdate() {
+  setInterval(() => {
+    db.all('SELECT * FROM watching WHERE notified = (?)', [1], (err, row) => {
+      if (row.length !== 0) {
+        row.forEach((e, index) => {
+          setTimeout(async () => {
+            const vars = {
+              idMal: e.malID,
+              type: 'ANIME',
+              page: 1,
+              perPage: 1,
+            };
+            const res = await apiCall(vars);
+            if (e.nextEP !== res.nextAiringEpisode.airingAt && e.nextEP < res.nextAiringEpisode.airingAt) {
+              db.run('UPDATE watching SET notified = (?), nextEP = (?) WHERE malID = (?)', [0, res.nextAiringEpisode.airingAt, e.malID]);
+            }
+          }, 2500 * index);
+        });
+      }
     });
-  }, 3600000);
+  }, updateTimeout);
 }
 
-function notificationSender(row) {
-  const ID = client.getDMChannel(row.userID);
-  client.createMessage(ID, `${row.title} is now airing. 
+async function notificationSender(row) {
+  // console.log(row)
+  // console.log(row.userID)
+  const chat = await client.getDMChannel(row.userID);
+  client.createMessage(chat.id, `${row.title} is now airing. 
   Mal: ${malLink + row.malID}
   Anilist: ${aniLink + row.aniID}`);
 }
-async function apiCall(query, vars) {
+
+async function apiCall(vars) {
   const options = {
     method: 'POST',
     headers: {
@@ -73,15 +139,15 @@ async function apiCall(query, vars) {
       variables: vars,
     }),
   };
+
   const searchList = await fetch(apiURL, options)
-    .then(res => res.json())
-    .then(res => res.data.Page.media);
-  return searchList[0];
+    .then(res => res.json());
+  return searchList;
 }
 
-const query = `query ($id: Int, $page: Int, $perPage: Int, $search: String, $type: MediaType) {
+const query = `query ($status: MediaStatus, $idMal: Int, $id: Int, $page: Int, $perPage: Int, $search: String, $type: MediaType) {
   Page (page: $page, perPage: $perPage) {
-    media (id: $id, search: $search, type: $type) {
+    media (status: $status, idMal: $idMal, id: $id, search: $search, type: $type) {
       id
       idMal
       title {
