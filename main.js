@@ -7,84 +7,137 @@ const sqlite3 = require('sqlite3');
 // const schedule = require('node-schedule');
 const login = require('./config/login.json');
 
+const prefix = '!';
 const db = new sqlite3.Database('database.db');
 const apiURL = 'https://graphql.anilist.co';
 const client = new Eris.CommandClient(login.discord, {}, {
   defaultHelpCommand: false,
   description: 'A notifier bot',
   owner: 'OneDex',
-  prefix: '!',
+  prefix,
 });
 client.connect();
 const malLink = 'https://myanimelist.net/anime/';
 const aniLink = 'https://anilist.co/anime/';
 const watchingTimeout = 3600000;// 3600000
-const updateTimeout = 3600000;
-bigBrother();
+const updateTimeout = 28800000;
 
+bigBrother();
+checkUpdate();
 client.registerCommand('notifyme', async (message, args) => {
-  const userSearch = args.join(' ');
-  console.log(userSearch);
-  const vars = {
+  let c;
+  const userSearch = [];
+  let vars = {
     status: 'RELEASING',
-    search: userSearch,
     type: 'ANIME',
     page: 1,
     perPage: 1,
   };
-
+  let idLoc = -1;
+  if (args.indexOf('-ani') !== -1) {
+    idLoc = args.indexOf('-ani') + 1;
+    vars = Object.assign({ id: args[idLoc] }, vars);
+    c = true;
+  }
+  let idMalLoc = -1;
+  if (args.indexOf('-mal') !== -1) {
+    idMalLoc = args.indexOf('-mal') + 1;
+    vars = Object.assign({ idMal: args[idMalLoc] }, vars);
+    c = true;
+  }
+  args.forEach((i, index) => {
+    if (index > idLoc && index > idMalLoc) {
+      userSearch.push(i);
+    }
+  });
+  let txtSearch;
+  if (userSearch.length > 0) {
+    txtSearch = userSearch.join(' ');
+    vars = Object.assign({ search: txtSearch }, vars);
+  }
+  console.log(vars);
   const searchList = await apiCall(vars);
-  let c;
+  console.log(searchList);
+
   if (searchList.data.Page.media) {
     console.log(searchList.data.Page.media[0].title);
-    Object.keys(searchList.data.Page.media[0].title).forEach((k) => {
-      if (searchList.data.Page.media[0].title[k].toLowerCase() === userSearch.toLowerCase()) {
-        c = true;
-      }
-    });
-    if (c === true) {
-      const search = searchList.data.Page.media[0];
-      await db.all('SELECT * FROM watching WHERE malID = (?)', [search.idMal], (err, row) => {
-        if (err || row.length === 0) {
-          db.run('INSERT INTO watching (userID, malID, aniID, nextEP, title, notified) values (?,?,?,?,?,?)', [message.member.id, search.idMal, search.id, search.nextAiringEpisode.airingAt, search.title.romaji, 0]);
-          const d = new Date(search.nextAiringEpisode.airingAt * 1000);
-          console.log('notify');
-          console.log(message.member.id + search.title);
-          message.channel.createMessage(`You will now be notified for ${search.title.romaji}. Next ep at ${d}\nMAL: ${malLink}${search.idMal}\nanilist: ${aniLink}${search.id}`);
+    if (txtSearch) {
+      Object.keys(searchList.data.Page.media[0].title).forEach((k) => {
+        if (searchList.data.Page.media[0].title[k].toLowerCase() === txtSearch.toLowerCase() && c !== true) {
+          c = true;
         }
       });
     }
   }
+  if (c === true || idLoc !== -1 || idMalLoc !== -1) {
+    console.log('c === true');
+    const search = searchList.data.Page.media[0];
+    await db.all('SELECT * FROM watching WHERE malID = (?)', [search.idMal], (err, row) => {
+      if (err || row.length === 0) {
+        db.run('INSERT INTO watching (userID, malID, aniID, nextEP, title, notified) values (?,?,?,?,?,?)', [message.member.id, search.idMal, search.id, search.nextAiringEpisode.airingAt, search.title.romaji, 0]);
+        const d = new Date(search.nextAiringEpisode.airingAt * 1000);
+        console.log('notify');
+        console.log(message.member.id + search.title);
+        message.channel.createMessage(`You will now be notified for ${search.title.romaji}. Next ep at ${d}\nMAL: ${malLink}${search.idMal}\nanilist: ${aniLink}${search.id}`);
+      }
+    });
+  }
+}, {
+  caseInsensitive: true,
 });
 
 client.registerCommand('unnotifyme', async (message, args) => {
-  const userSearch = args.join(' ');
-  const vars = {
+  let c;
+  const userSearch = [];
+  let vars = {
     status: 'RELEASING',
-    search: userSearch,
     type: 'ANIME',
     page: 1,
     perPage: 1,
   };
+  let idLoc = -1;
+  if (args.indexOf('-ani') !== -1) {
+    idLoc = args.indexOf('-ani') + 1;
+    vars = Object.assign({ id: args[idLoc] }, vars);
+    c = true;
+  }
+  let idMalLoc = -1;
+  if (args.indexOf('-mal') !== -1) {
+    idMalLoc = args.indexOf('-mal') + 1;
+    vars = Object.assign({ idMal: args[idMalLoc] }, vars);
+    c = true;
+  }
+  args.forEach((i, index) => {
+    if (index > idLoc && index > idMalLoc) {
+      userSearch.push(i);
+    }
+  });
+  let txtSearch;
+  if (userSearch.length > 0) {
+    txtSearch = userSearch.join(' ');
+    vars = Object.assign({ search: txtSearch }, vars);
+  }
   const searchList = await apiCall(vars);
-  let c;
   if (searchList.data.Page.media) {
     console.log(searchList.data.Page.media[0].title);
-    Object.keys(searchList.data.Page.media[0].title).forEach((k) => {
-      if (searchList.data.Page.media[0].title[k].toLowerCase() === userSearch.toLowerCase()) {
-        c = true;
-      }
-    });
-    if (c === true) {
-      const search = searchList.data.Page.media[0];
-      db.run('DELETE FROM watching WHERE malID = (?) AND userID = (?)', [search.idMal, message.member.id]);
-      console.log('unnotify');
-      console.log(message.member.id + search.title);
-      client.createMessage(message.channel.id, `You will no longer get notifications for ${searchList.data.Page.media[0].title.romaji} mal: ${search.idMal}`);
+    if (txtSearch) {
+      Object.keys(searchList.data.Page.media[0].title).forEach((k) => {
+        if (searchList.data.Page.media[0].title[k].toLowerCase() === txtSearch.toLowerCase() && c !== true) {
+          c = true;
+        }
+      });
     }
   }
+  if (c === true) {
+    const search = searchList.data.Page.media[0];
+    db.run('DELETE FROM watching WHERE malID = (?) AND userID = (?)', [search.idMal, message.member.id]);
+    console.log('unnotify');
+    console.log(message.member.id + search.title);
+    client.createMessage(message.channel.id, `You will no longer get notifications for ${searchList.data.Page.media[0].title.romaji} mal: ${search.idMal}`);
+  }
+}, {
+  caseInsensitive: true,
 });
-
 function bigBrother() {
   console.log('Im always watching');
   setInterval(async () => {
@@ -101,7 +154,7 @@ function bigBrother() {
     });
   }, watchingTimeout);
 }
-checkUpdate();
+
 async function checkUpdate() {
   console.log('checking for updated times');
   setInterval(() => {
@@ -156,38 +209,6 @@ async function apiCall(vars) {
   return searchList;
 }
 
-const query = `query ($status: MediaStatus, $idMal: Int, $id: Int, $page: Int, $perPage: Int, $search: String, $type: MediaType) {
-  Page (page: $page, perPage: $perPage) {
-    media (status: $status, idMal: $idMal, id: $id, search: $search, type: $type) {
-      id
-      idMal
-      title {
-        romaji,
-        english,
-        native
-      }
-      type
-      status
-      updatedAt
-      startDate {
-        year
-        month
-        day
-      }
-      endDate {
-        year
-        month
-        day
-      }
-      episodes
-      nextAiringEpisode {
-        episode
-        airingAt
-        timeUntilAiring
-      }
-    }
-  }
-}`;
 
 client.registerCommand('search', async (message, args) => {
   const search = [];
@@ -240,4 +261,47 @@ client.registerCommand('search', async (message, args) => {
   const res = msg.join('\n\n');
   // console.log(res);
   message.channel.createMessage(res);
+}, {
+  caseInsensitive: true,
 });
+client.registerCommand('help', (message) => {
+  message.channel.createMessage(`Commands:
+  ${prefix}help: Shows this message
+  ${prefix}notifyme: Will set you to be notified of anime. usage: !notifyme One Piece, !notifyme -mal 21, !notifyme -ani 21
+  ${prefix}unnotifyme: Will stop notifications for said anime. usage: !unnotifyme One Piece, !unnotifyme -mal 21, !unnotifyme -ani 21
+  ${prefix}search: Will get search results for said anime. usage: !search One Piece, !search -n 1 One Piece, !search -t MANGA One Piece`);
+}, {
+  caseInsensitive: true,
+});
+const query = `query ($status: MediaStatus, $idMal: Int, $id: Int, $page: Int, $perPage: Int, $search: String, $type: MediaType) {
+  Page (page: $page, perPage: $perPage) {
+    media (status: $status, idMal: $idMal, id: $id, search: $search, type: $type) {
+      id
+      idMal
+      title {
+        romaji,
+        english,
+        native
+      }
+      type
+      status
+      updatedAt
+      startDate {
+        year
+        month
+        day
+      }
+      endDate {
+        year
+        month
+        day
+      }
+      episodes
+      nextAiringEpisode {
+        episode
+        airingAt
+        timeUntilAiring
+      }
+    }
+  }
+}`;
