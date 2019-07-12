@@ -72,7 +72,7 @@ client.registerCommand('notifyme', async (message, args) => {
   if (c === true || idLoc !== -1 || idMalLoc !== -1) {
     // console.log('c === true');
     const search = searchList.data.Page.media[0];
-    await db.all('SELECT * FROM watching WHERE malID = (?)', [search.idMal], (err, row) => {
+    await db.all('SELECT * FROM watching WHERE malID = (?) AND userID = (?)', [search.idMal, message.member.id], (err, row) => {
       if (err || row.length === 0) {
         db.run('INSERT INTO watching (userID, malID, aniID, nextEP, title, notified) values (?,?,?,?,?,?)', [message.member.id, search.idMal, search.id, search.nextAiringEpisode.airingAt, search.title.romaji, 0]);
         const d = new Date(search.nextAiringEpisode.airingAt * 1000);
