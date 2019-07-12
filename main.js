@@ -4,10 +4,14 @@
 const Eris = require('eris');
 const fetch = require('node-fetch');
 const sqlite3 = require('sqlite3');
-// const schedule = require('node-schedule');
 const login = require('./config/login.json');
 
-const prefix = '!';
+const malLink = 'https://myanimelist.net/anime/';
+const aniLink = 'https://anilist.co/anime/';
+const watchingTimeout = 3600000;// 3600000
+const updateTimeout = 28800000;// 28800000
+const embedColor = 16609747;// 16609747
+const prefix = '!';// !
 const db = new sqlite3.Database('database.db');
 const apiURL = 'https://graphql.anilist.co';
 const client = new Eris.CommandClient(login.discord, {}, {
@@ -17,11 +21,6 @@ const client = new Eris.CommandClient(login.discord, {}, {
   prefix,
 });
 client.connect();
-const malLink = 'https://myanimelist.net/anime/';
-const aniLink = 'https://anilist.co/anime/';
-const watchingTimeout = 3600000;// 3600000
-const updateTimeout = 28800000;
-const embedColor = 16609747;
 bigBrother();
 checkUpdate();
 client.registerCommand('notifyme', async (message, args) => {
@@ -85,6 +84,8 @@ client.registerCommand('notifyme', async (message, args) => {
 }, {
   caseInsensitive: true,
 });
+client.registerCommandAlias('notify', 'notifyme');
+client.registerCommandAlias('n', 'notifyme');
 
 client.registerCommand('unnotifyme', async (message, args) => {
   let c;
@@ -139,6 +140,8 @@ client.registerCommand('unnotifyme', async (message, args) => {
 }, {
   caseInsensitive: true,
 });
+client.registerCommandAlias('u', 'unnotifyme');
+client.registerCommandAlias('unnotify', 'unnotifyme');
 function bigBrother() {
   console.log(`Im always watching ${new Date()}`);
   setInterval(async () => {
