@@ -58,8 +58,8 @@ client.registerCommand('notifyme', async (message, args) => {
   // console.log(vars);
   const searchList = await apiCall(vars);
   // console.log(searchList);
-
-  if (searchList.data.Page.media) {
+  if (searchList.errors || !searchList.data.Page.media[0].title) return;
+  if (searchList.data.Page.media[0]) {
     // console.log(searchList.data.Page.media[0].title);
     if (txtSearch) {
       Object.keys(searchList.data.Page.media[0].title).forEach((k) => {
@@ -118,7 +118,8 @@ client.registerCommand('unnotifyme', async (message, args) => {
     vars = Object.assign({ search: txtSearch }, vars);
   }
   const searchList = await apiCall(vars);
-  if (searchList.data.Page.media) {
+  if (searchList.errors || !searchList.data.Page.media[0].title) return;
+  if (searchList.data.Page.media[0]) {
     // console.log(searchList.data.Page.media[0].title);
     if (txtSearch) {
       Object.keys(searchList.data.Page.media[0].title).forEach((k) => {
@@ -307,6 +308,7 @@ client.registerCommand('search', async (message, args) => {
 
   // console.log(vars);
   const searchList = await apiCall(vars);
+  if (searchList.errors || !searchList.data.Page.media[0].title) return;
   const search2 = await searchList.data.Page.media;
   const msg = [];
   for (let i = 0; i < search2.length; i++) {
