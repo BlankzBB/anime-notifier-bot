@@ -23,6 +23,7 @@ const client = new Eris.CommandClient(login.discord, {}, {
 client.connect();
 bigBrother();
 checkUpdate();
+
 client.registerCommand('notifyme', async (message, args) => {
   let c;
   let vars = {
@@ -58,13 +59,11 @@ client.registerCommand('notifyme', async (message, args) => {
         const d = new Date(search.nextAiringEpisode.airingAt * 1000);
         console.log('notify');
         console.log(message.member.id + search.title);
-        message.channel.createMessage(`You will now be notified for ${search.title.romaji}. Next ep at ${d}\nMAL: ${malLink}${search.idMal}\nanilist: ${aniLink}${search.id}`);
+        reply(message, search, 1);
       }
     });
   }
-}, {
-  caseInsensitive: true,
-});
+}, { caseInsensitive: true });
 client.registerCommandAlias('notify', 'notifyme');
 client.registerCommandAlias('n', 'notifyme');
 
@@ -105,13 +104,12 @@ client.registerCommand('unnotifyme', async (message, args) => {
     db.run('DELETE FROM watching WHERE malID = (?) AND userID = (?)', [search.idMal, message.member.id]);
     console.log('unnotify');
     console.log(message.member.id + search.title);
-    message.channel.createMessage(`You will no longer get notifications for ${searchList.data.Page.media[0].title.romaji}\nmal: ${malLink + search.idMal}\nanilist: ${aniLink + search.id}`);
+    reply(message, search, 0);
   }
-}, {
-  caseInsensitive: true,
-});
+}, { caseInsensitive: true });
 client.registerCommandAlias('u', 'unnotifyme');
 client.registerCommandAlias('unnotify', 'unnotifyme');
+
 function bigBrother() {
   console.log(`Im always watching ${new Date()}`);
   setInterval(async () => {
@@ -203,6 +201,7 @@ function argParse(args, v) {
   }
   return vars;
 }
+
 async function checkUpdate() {
   setInterval(() => {
     console.log('checking for updated times');
@@ -235,6 +234,45 @@ async function notificationSender(uID, res) {
 
   console.log(`sending notification for: ${chat.id}`);
   client.createMessage(chat.id, {
+    embed: {
+      color: embedColor,
+      thumbnail: {
+        url: res.imageURL,
+        height: 333,
+        width: 2000,
+      },
+      description: res.sub,
+      fields: res.final,
+      footer: {
+        text: login.user,
+      },
+      timestamp: new Date(),
+    },
+  });
+}
+
+function reply(message, media, notify) {
+  const imageURL = media.coverImage.large;
+  const sub = media.title.romaji;
+  let final;
+  if (notify === 1) {
+    final = [{
+      name: `You will now be notified when ${media.title.romaji} goes live!`,
+      value: `[MAL](${malLink + media.idMal})\n [Anilist](${aniLink + media.id})`,
+    }];
+  }
+  if (notify === 0) {
+    final = [{
+      name: `stopping notifications for ${media.title.romaji}`,
+      value: `[MAL](${malLink + media.idMal})\n [Anilist](${aniLink + media.id})`,
+    }];
+  }
+  const res = {
+    sub,
+    final,
+    imageURL,
+  };
+  message.channel.createMessage({
     embed: {
       color: embedColor,
       thumbnail: {
@@ -328,18 +366,49 @@ client.registerCommand('search', async (message, args) => {
   const res = msg.join('\n\n');
   // console.log(res);
   message.channel.createMessage(res);
-}, {
-  caseInsensitive: true,
-});
+}, { caseInsensitive: true });
+client.registerCommandAlias('s', 'search');
+
 client.registerCommand('help', (message) => {
-  message.channel.createMessage(`Commands:
-  ${prefix}help: Shows this message
-  ${prefix}notifyme: Will set you to be notified of anime. usage: !notifyme One Piece, !notifyme -mal 21, !notifyme -ani 21
-  ${prefix}unnotifyme: Will stop notifications for said anime. usage: !unnotifyme One Piece, !unnotifyme -mal 21, !unnotifyme -ani 21
-  ${prefix}search: Will get search results for said anime. usage: !search One Piece, !search -n 1 One Piece, !search -t MANGA One Piece`);
-}, {
-  caseInsensitive: true,
-});
+  const final = [{
+    name: `${prefix}help, ${prefix}h`,
+    value: 'Brings up command list',
+  }, {
+    name: `${prefix}notifyme, ${prefix}notify,${prefix}n`,
+    value: `usage: ${prefix}n One Piece, ${prefix}n -mal 21, ${prefix}n -ani 21
+    Get notified when an episode comes out`,
+  }, {
+    name: `${prefix}unnotifyme, ${prefix}unnotify, ${prefix}u`,
+    value: `usage: ${prefix}u One Piece, ${prefix}u -mal 21, ${prefix}u -ani 21, ${prefix}u all
+    Stops notifications for anime episodes.`,
+  }, {
+    name: `${prefix}search, ${prefix}s`,
+    value: `usage: ${prefix}s One Piece, ${prefix}s -t MANGA One Piece, ${prefix}s -t ANIME -n 2 One Piece, ${prefix}s -mal 21`,
+  }];
+  message.channel.createMessage({
+    embed: {
+      color: embedColor,
+      // thumbnail: {
+      //   url: res.imageURL,
+      //   height: 333,
+      //   width: 2000,
+      // },
+      description: 'Commands:',
+      fields: final,
+      footer: {
+        text: login.user,
+      },
+      timestamp: new Date(),
+    },
+  });
+  // message.channel.createMessage(`Commands:
+  // ${prefix}help: Shows this message
+  // ${prefix}notifyme: Will set you to be notified of anime. usage: !notifyme One Piece, !notifyme -mal 21, !notifyme -ani 21
+  // ${prefix}unnotifyme: Will stop notifications for said anime. usage: !unnotifyme One Piece, !unnotifyme -mal 21, !unnotifyme -ani 21
+  // ${prefix}search: Will get search results for said anime. usage: !search One Piece, !search -n 1 One Piece, !search -t MANGA One Piece`);
+}, { caseInsensitive: true });
+client.registerCommandAlias('h', 'help');
+
 const query = `query ($status: MediaStatus, $idMal: Int, $id: Int, $page: Int, $perPage: Int, $search: String, $type: MediaType) {
   Page (page: $page, perPage: $perPage) {
     media (status: $status, idMal: $idMal, id: $id, search: $search, type: $type) {
