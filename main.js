@@ -25,51 +25,32 @@ bigBrother();
 checkUpdate();
 client.registerCommand('notifyme', async (message, args) => {
   let c;
-  const userSearch = [];
   let vars = {
     status: 'RELEASING',
     type: 'ANIME',
     page: 1,
     perPage: 1,
   };
-  let idLoc = -1;
-  if (args.indexOf('-ani') !== -1) {
-    idLoc = args.indexOf('-ani') + 1;
-    vars = Object.assign({ id: args[idLoc] }, vars);
-    c = true;
-  }
-  let idMalLoc = -1;
-  if (args.indexOf('-mal') !== -1) {
-    idMalLoc = args.indexOf('-mal') + 1;
-    vars = Object.assign({ idMal: args[idMalLoc] }, vars);
-    c = true;
-  }
-  args.forEach((i, index) => {
-    if (index > idLoc && index > idMalLoc) {
-      userSearch.push(i);
-    }
-  });
-  let txtSearch;
-  if (userSearch.length > 0) {
-    txtSearch = userSearch.join(' ');
-    vars = Object.assign({ search: txtSearch }, vars);
-  }
-  // console.log(vars);
+  vars = await argParse(args, vars);
+  console.log(vars);
   const searchList = await apiCall(vars);
-  // console.log(searchList);
+  console.log(searchList);
   if (searchList.errors || !searchList.data.Page.media[0].title) return;
+
   if (searchList.data.Page.media[0]) {
     // console.log(searchList.data.Page.media[0].title);
-    if (txtSearch) {
+    if (searchList.data.Page.media[0].id === Number(vars.id) || searchList.data.Page.media[0].idMal === Number(vars.idMal)) {
+      c = true;
+    }
+    if (c !== true) {
       Object.keys(searchList.data.Page.media[0].title).forEach((k) => {
-        if (searchList.data.Page.media[0].title[k].toLowerCase() === txtSearch.toLowerCase() && c !== true) {
+        if (searchList.data.Page.media[0].title[k].toLowerCase() === vars.search.toLowerCase()) {
           c = true;
         }
       });
     }
   }
-  if (c === true || idLoc !== -1 || idMalLoc !== -1) {
-    // console.log('c === true');
+  if (c === true) {
     const search = searchList.data.Page.media[0];
     await db.all('SELECT * FROM watching WHERE malID = (?) AND userID = (?)', [search.idMal, message.member.id], (err, row) => {
       if (err || row.length === 0) {
@@ -89,42 +70,31 @@ client.registerCommandAlias('n', 'notifyme');
 
 client.registerCommand('unnotifyme', async (message, args) => {
   let c;
-  const userSearch = [];
   let vars = {
     status: 'RELEASING',
     type: 'ANIME',
     page: 1,
     perPage: 1,
   };
-  let idLoc = -1;
-  if (args.indexOf('-ani') !== -1) {
-    idLoc = args.indexOf('-ani') + 1;
-    vars = Object.assign({ id: args[idLoc] }, vars);
-    c = true;
-  }
-  let idMalLoc = -1;
-  if (args.indexOf('-mal') !== -1) {
-    idMalLoc = args.indexOf('-mal') + 1;
-    vars = Object.assign({ idMal: args[idMalLoc] }, vars);
-    c = true;
-  }
-  args.forEach((i, index) => {
-    if (index > idLoc && index > idMalLoc) {
-      userSearch.push(i);
-    }
-  });
-  let txtSearch;
-  if (userSearch.length > 0) {
-    txtSearch = userSearch.join(' ');
-    vars = Object.assign({ search: txtSearch }, vars);
+  vars = await argParse(args, vars);
+  if (vars.search === 'all') {
+    db.all('SELECT * FROM watching WHERE userID = (?)', [message.member.id], (err, row) => {
+      if (err || row.length === 0) return;
+      db.run('DELETE FROM watching WHERE userID = (?)', [message.member.id]);
+      message.channel.createMessage(`cleared notifications for ${message.member.username}`);
+    });
+    return;
   }
   const searchList = await apiCall(vars);
   if (searchList.errors || !searchList.data.Page.media[0].title) return;
   if (searchList.data.Page.media[0]) {
     // console.log(searchList.data.Page.media[0].title);
-    if (txtSearch) {
+    if (searchList.data.Page.media[0].id === Number(vars.id) || searchList.data.Page.media[0].idMal === Number(vars.idMal)) {
+      c = true;
+    }
+    if (c !== true) {
       Object.keys(searchList.data.Page.media[0].title).forEach((k) => {
-        if (searchList.data.Page.media[0].title[k].toLowerCase() === txtSearch.toLowerCase() && c !== true) {
+        if (searchList.data.Page.media[0].title[k].toLowerCase() === vars.search.toLowerCase()) {
           c = true;
         }
       });
@@ -135,7 +105,7 @@ client.registerCommand('unnotifyme', async (message, args) => {
     db.run('DELETE FROM watching WHERE malID = (?) AND userID = (?)', [search.idMal, message.member.id]);
     console.log('unnotify');
     console.log(message.member.id + search.title);
-    client.createMessage(message.channel.id, `You will no longer get notifications for ${searchList.data.Page.media[0].title.romaji}\nmal: ${malLink + search.idMal}\nanilist: ${aniLink + search.id}`);
+    message.channel.createMessage(`You will no longer get notifications for ${searchList.data.Page.media[0].title.romaji}\nmal: ${malLink + search.idMal}\nanilist: ${aniLink + search.id}`);
   }
 }, {
   caseInsensitive: true,
@@ -175,6 +145,64 @@ function bigBrother() {
   }, watchingTimeout);
 }
 
+function argParse(args, v) {
+  const vars = v;
+  const types = ['anime', 'manga'];
+  const index = {
+    type: -1,
+    mal: -1,
+    ani: -1,
+    n: -1,
+  };
+  if (args.includes('-t')) {
+    index.type = args.indexOf('-t') + 1;
+    const type = args[args.indexOf('-t') + 1].toLowerCase();
+    if (types.includes(type)) {
+      if (vars.type === undefined) {
+        vars.type = type.toUpperCase();
+      }
+    }
+  }
+  const ids = ['-mal', '-ani'];
+  if (args.includes(ids[0])) {
+    index.mal = args.indexOf(ids[0]) + 1;
+    if (vars.idMal === undefined) {
+      vars.idMal = args[index.mal];
+    }
+  }
+  if (args.includes(ids[1])) {
+    index.ani = args.indexOf(ids[1]) + 1;
+    if (vars.id === undefined && vars.idMal === undefined) {
+      vars.id = args[index.ani];
+    }
+  }
+  vars.perPage = 1;
+  if (args.includes('-n')) {
+    index.n = args.indexOf('-n') + 1;
+    if (args[index.n] < 5) {
+      if (index.mal === -1 && index.ani === -1) {
+        vars.perPage = args[index.n];
+      }
+    }
+  }
+  if (!args.includes('-n')) {
+    vars.perPage = 1;
+  }
+
+  const search = [];
+  const values = Object.values(index);
+  console.log(values);
+  console.log(index);
+  args.forEach((a, i) => {
+    if (values.every(t => t < i)) {
+      search.push(a);
+    }
+  });
+  if (search && search.length) {
+    vars.search = search.join(' ');
+  }
+  return vars;
+}
 async function checkUpdate() {
   setInterval(() => {
     console.log('checking for updated times');
@@ -276,41 +304,13 @@ async function apiCall(vars) {
 
 
 client.registerCommand('search', async (message, args) => {
-  const search = [];
-
   let vars = {
     page: 1,
   };
-
-  let typeLoc = -1;
-  if (args.indexOf('-t') !== -1) {
-    typeLoc = args.indexOf('-t') + 1;
-    vars = Object.assign({ type: args[typeLoc].toUpperCase() }, vars);
-  }
-
-  let pn = 3;
-  let pnLoc = -1;
-  if (args.indexOf('-n') !== -1) {
-    pnLoc = args.indexOf('-n') + 1;
-    if (args[pnLoc] < 10) {
-      pn = Number(args[pnLoc]);
-    }
-    if (args[pnLoc] > 10) {
-      pn = 3;
-    }
-  }
-  vars = Object.assign({ perPage: pn }, vars);
-
-  args.forEach((i, index) => {
-    if (index > typeLoc && index > pnLoc) {
-      search.push(i);
-    }
-  });
-  const txtSearch = search.join(' ');
-  vars = Object.assign({ search: txtSearch }, vars);
-
-  // console.log(vars);
+  vars = await argParse(args, vars);
+  console.log(vars);
   const searchList = await apiCall(vars);
+  console.log(searchList);
   if (searchList.errors || !searchList.data.Page.media[0].title) return;
   const search2 = await searchList.data.Page.media;
   const msg = [];
