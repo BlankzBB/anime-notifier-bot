@@ -327,10 +327,6 @@ async function notificationCreator(IDs) {
   const search = searchList.data.Page.media[0];
   const imageURL = search.coverImage.large;
   const airingEP = search.nextAiringEpisode.episode;
-  // let totalEP = '?';
-  // if (search.episodes) {
-  //   totalEP = search.episodes;
-  // }
   const sub = IDs.title;
   const final = [{
     name: `Episode #${airingEP} is now airing!`,
@@ -386,7 +382,7 @@ client.registerCommand('search', async (message, args) => {
     if (!show.title.english) {
       tempObj.name = `${show.title.romaji}`;
     }
-    tempObj.value = `[mal](${malLink + show.idMal})\n[anilist](${aniLink + show.id})`;
+    tempObj.value = `${show.type}\n[mal](${malLink + show.idMal})\n[anilist](${aniLink + show.id})`;
     final.push(tempObj);
   });
   const res = {
@@ -418,11 +414,6 @@ client.registerCommand('help', (message) => {
     final,
   };
   messageSender(1, message.channel.id, res);
-  // message.channel.createMessage(`Commands:
-  // ${prefix}help: Shows this message
-  // ${prefix}notifyme: Will set you to be notified of anime. usage: !notifyme One Piece, !notifyme -mal 21, !notifyme -ani 21
-  // ${prefix}unnotifyme: Will stop notifications for said anime. usage: !unnotifyme One Piece, !unnotifyme -mal 21, !unnotifyme -ani 21
-  // ${prefix}search: Will get search results for said anime. usage: !search One Piece, !search -n 1 One Piece, !search -t MANGA One Piece`);
 }, { caseInsensitive: true });
 client.registerCommandAlias('h', 'help');
 
