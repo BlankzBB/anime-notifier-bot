@@ -59,7 +59,18 @@ client.registerCommand('notifyme', async (message, args) => {
         // const d = new Date(search.nextAiringEpisode.airingAt * 1000);
         console.log('notify');
         console.log(message.member.id + search.title);
-        reply(message, search, 1);
+        const imageURL = search.coverImage.large;
+        const sub = search.title.romaji;
+        const final = [{
+          name: `You will now be notified when ${search.title.romaji} goes live!`,
+          value: `[MAL](${malLink + search.idMal})\n [Anilist](${aniLink + search.id})`,
+        }];
+        const res = {
+          sub,
+          final,
+          imageURL,
+        };
+        messageSender(1, message.channel.id, res);
       }
     });
   }
@@ -81,7 +92,8 @@ client.registerCommand('unnotifyme', async (message, args) => {
     db.all('SELECT * FROM watching WHERE userID = (?)', [message.member.id], (err, row) => {
       if (err || row.length === 0) return;
       db.run('DELETE FROM watching WHERE userID = (?)', [message.member.id]);
-      message.channel.createMessage(`cleared notifications for ${message.member.username}`);
+      const res = `cleared notifications for ${message.member.username}`;
+      messageSender(0, message.channel.id, res);
     });
     return;
   }
@@ -105,7 +117,18 @@ client.registerCommand('unnotifyme', async (message, args) => {
     db.run('DELETE FROM watching WHERE malID = (?) AND userID = (?)', [search.idMal, message.member.id]);
     console.log('unnotify');
     console.log(message.member.id + search.title);
-    reply(message, search, 0);
+    const imageURL = search.coverImage.large;
+    const sub = search.title.romaji;
+    const final = [{
+      name: `stopping notifications for ${search.title.romaji}`,
+      value: `[MAL](${malLink + search.idMal})\n [Anilist](${aniLink + search.id})`,
+    }];
+    const res = {
+      sub,
+      final,
+      imageURL,
+    };
+    messageSender(1, message.channel.id, res);
   }
 }, { caseInsensitive: true });
 client.registerCommandAlias('u', 'unnotifyme');
@@ -156,9 +179,14 @@ function argParse(args, v) {
   };
   vars.perPage = 1;
   argList.forEach((a) => {
-    if (args.includes(a)) {
-      if (a === '-t') {
-        index.type = args.indexOf(a) + 1;
+    if (a === '-t') {
+      if (args.includes(a)) {
+        const t = args.indexOf(a);
+        if (args[t + 1].toLowerCase() !== 'anime' && args[t + 1].toLowerCase() !== 'manga') {
+          index.type = t;
+          return;
+        }
+        index.type = t + 1;
         const type = args[args.indexOf('-t') + 1].toLowerCase();
         if (types.includes(type)) {
           if (vars.type === undefined) {
@@ -168,6 +196,11 @@ function argParse(args, v) {
       }
       if (a === '-mal') {
         if (args.includes(a)) {
+          const m = args.indexOf(a);
+          if (typeof args[m + 1] !== 'number') {
+            index.mal = m;
+            return;
+          }
           index.mal = args.indexOf(a) + 1;
           if (vars.idMal === undefined) {
             vars.idMal = args[index.mal];
@@ -176,6 +209,11 @@ function argParse(args, v) {
       }
       if (a === '-ani') {
         if (args.includes(a)) {
+          const n = args.indexOf(a);
+          if (typeof args[n + 1] !== 'number') {
+            index.ani = n;
+            return;
+          }
           index.ani = args.indexOf(a) + 1;
           if (vars.id === undefined && vars.idMal === undefined) {
             vars.id = args[index.ani];
@@ -184,15 +222,17 @@ function argParse(args, v) {
       }
       if (a === '-n') {
         if (args.includes(a)) {
+          const n = args.indexOf(a);
+          if (typeof (args[n + 1]) !== 'number') {
+            index.n = n;
+            return;
+          }
           index.n = args.indexOf(a) + 1;
           if (args[index.n] < 5) {
             if (index.mal === -1 && index.ani === -1) {
               vars.perPage = args[index.n];
             }
           }
-        }
-        if (!args.includes('-n')) {
-          vars.perPage = 1;
         }
       }
     }
@@ -210,7 +250,6 @@ function argParse(args, v) {
   }
   return vars;
 }
-
 async function checkUpdate() {
   setInterval(() => {
     console.log('checking for updated times');
@@ -224,7 +263,12 @@ async function checkUpdate() {
               page: 1,
               perPage: 1,
             };
-            const res = await apiCall(vars);
+            const searchList = await apiCall(vars);
+            const res = searchList.data.Page.media[0];
+            if (!res.nextAiringEpisode) {
+              db.run('DELETE FROM watching WHERE malID = (?)', [e.malID]);
+              return;
+            }
             if (e.nextEP !== res.nextAiringEpisode.airingAt && e.nextEP < res.nextAiringEpisode.airingAt) {
               console.log(`Updating ${e.malID} airtime`);
               db.run('UPDATE watching SET notified = (?), nextEP = (?) WHERE malID = (?)', [0, res.nextAiringEpisode.airingAt, e.malID]);
@@ -235,68 +279,42 @@ async function checkUpdate() {
     });
   }, updateTimeout);
 }
-
-async function notificationSender(uID, res) {
-  // console.log(row)
-  // console.log(row.userID)
-  const chat = await client.getDMChannel(uID);
-
-  console.log(`sending notification for: ${chat.id}`);
-  client.createMessage(chat.id, {
-    embed: {
-      color: embedColor,
-      thumbnail: {
-        url: res.imageURL,
-        height: 333,
-        width: 2000,
-      },
-      description: res.sub,
-      fields: res.final,
-      footer: {
-        text: login.user,
-      },
-      timestamp: new Date(),
-    },
-  });
-}
-
-function reply(message, media, notify) {
-  const imageURL = media.coverImage.large;
-  const sub = media.title.romaji;
-  let final;
-  if (notify === 1) {
-    final = [{
-      name: `You will now be notified when ${media.title.romaji} goes live!`,
-      value: `[MAL](${malLink + media.idMal})\n [Anilist](${aniLink + media.id})`,
-    }];
+function messageSender(rich, id, res) {
+  if (rich === 1) {
+    let embed = {};
+    if (res.imageURL !== undefined) {
+      embed = {
+        color: embedColor,
+        thumbnail: {
+          url: res.imageURL,
+          height: 333,
+          width: 2000,
+        },
+        description: res.sub,
+        fields: res.final,
+        footer: {
+          text: login.user,
+        },
+        timestamp: new Date(),
+      };
+    }
+    if (res.imageURL === undefined) {
+      embed = {
+        color: embedColor,
+        description: res.sub,
+        fields: res.final,
+        footer: {
+          text: login.user,
+        },
+        timestamp: new Date(),
+      };
+    }
+    client.createMessage(id, {
+      embed,
+    });
+    return;
   }
-  if (notify === 0) {
-    final = [{
-      name: `stopping notifications for ${media.title.romaji}`,
-      value: `[MAL](${malLink + media.idMal})\n [Anilist](${aniLink + media.id})`,
-    }];
-  }
-  const res = {
-    sub,
-    final,
-    imageURL,
-  };
-  message.channel.createMessage({
-    embed: {
-      color: embedColor,
-      thumbnail: {
-        url: res.imageURL,
-        height: 333,
-        width: 2000,
-      },
-      description: res.sub,
-      fields: res.final,
-      footer: {
-        text: login.user,
-      },
-      timestamp: new Date(),
-    },
-  });
+  client.createMessage(id, res);
 }
 async function notificationCreator(IDs) {
   const vars = {
@@ -323,8 +341,9 @@ async function notificationCreator(IDs) {
     final,
     imageURL,
   };
-  IDs.userID.forEach((uID) => {
-    notificationSender(uID, res);
+  IDs.userID.forEach(async (uID) => {
+    const chat = await client.getDMChannel(uID);
+    messageSender(1, chat.id, res);
     db.run('UPDATE watching SET notified = (?) WHERE malID = (?) AND userID = (?)', [1, IDs.malID, uID]);
   });
 }
@@ -358,21 +377,23 @@ client.registerCommand('search', async (message, args) => {
   const searchList = await apiCall(vars);
   if (searchList.errors || !searchList.data.Page.media[0].title) return;
   const search2 = await searchList.data.Page.media;
-  const msg = [];
-  for (let i = 0; i < search2.length; i++) {
-    let eTitle;
-    if (search2[i].title.english == null) {
-      eTitle = search2[i].title.romaji;
+  const final = [];
+  search2.forEach((show) => {
+    const tempObj = {};
+    if (show.title.english) {
+      tempObj.name = `${show.title.romaji} (${show.title.english})`;
     }
-    if (search2[i].title.english != null) {
-      eTitle = search2[i].title.english;
+    if (!show.title.english) {
+      tempObj.name = `${show.title.romaji}`;
     }
-    msg.push(`title: ${search2[i].title.romaji} (${eTitle})\ntype: ${search2[i].type}\nlink: https://myanimelist.net/${search2[i].type.toLowerCase()}/${search2[i].idMal} `);
-  }
-  // console.log(search2);
-  const res = msg.join('\n\n');
-  // console.log(res);
-  message.channel.createMessage(res);
+    tempObj.value = `[mal](${malLink + show.idMal})\n[anilist](${aniLink + show.id})`;
+    final.push(tempObj);
+  });
+  const res = {
+    sub: 'search',
+    final,
+  };
+  messageSender(1, message.channel.id, res);
 }, { caseInsensitive: true });
 client.registerCommandAlias('s', 'search');
 
@@ -392,22 +413,11 @@ client.registerCommand('help', (message) => {
     name: `${prefix}search, ${prefix}s`,
     value: `usage: ${prefix}s One Piece, ${prefix}s -t MANGA One Piece, ${prefix}s -t ANIME -n 2 One Piece, ${prefix}s -mal 21`,
   }];
-  message.channel.createMessage({
-    embed: {
-      color: embedColor,
-      // thumbnail: {
-      //   url: res.imageURL,
-      //   height: 333,
-      //   width: 2000,
-      // },
-      description: 'Commands:',
-      fields: final,
-      footer: {
-        text: login.user,
-      },
-      timestamp: new Date(),
-    },
-  });
+  const res = {
+    sub: 'Commands:',
+    final,
+  };
+  messageSender(1, message.channel.id, res);
   // message.channel.createMessage(`Commands:
   // ${prefix}help: Shows this message
   // ${prefix}notifyme: Will set you to be notified of anime. usage: !notifyme One Piece, !notifyme -mal 21, !notifyme -ani 21
