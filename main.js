@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 /* eslint-disable no-use-before-define */
 /* eslint-disable no-console */
 /* eslint-disable no-plusplus */
@@ -25,6 +26,7 @@ bigBrother();
 checkUpdate();
 
 client.registerCommand('notifyme', async (message, args) => {
+  if (!args.length) return;
   let c;
   let vars = {
     status: 'RELEASING',
@@ -33,11 +35,9 @@ client.registerCommand('notifyme', async (message, args) => {
     perPage: 1,
   };
   vars = await argParse(args, vars);
-  console.log(vars);
   const searchList = await apiCall(vars);
-  console.log(searchList);
-  if (searchList.errors || !searchList.data.Page.media[0].title) return;
-
+  console.log(searchList.data.Page.media[0]);
+  if (searchList.errors || !searchList.data.Page.media[0] || !searchList.data.Page.media[0].title) return;
   if (searchList.data.Page.media[0]) {
     // console.log(searchList.data.Page.media[0].title);
     if (searchList.data.Page.media[0].id === Number(vars.id) || searchList.data.Page.media[0].idMal === Number(vars.idMal)) {
@@ -56,7 +56,7 @@ client.registerCommand('notifyme', async (message, args) => {
     await db.all('SELECT * FROM watching WHERE malID = (?) AND userID = (?)', [search.idMal, message.member.id], (err, row) => {
       if (err || row.length === 0) {
         db.run('INSERT INTO watching (userID, malID, aniID, nextEP, title, notified) values (?,?,?,?,?,?)', [message.member.id, search.idMal, search.id, search.nextAiringEpisode.airingAt, search.title.romaji, 0]);
-        const d = new Date(search.nextAiringEpisode.airingAt * 1000);
+        // const d = new Date(search.nextAiringEpisode.airingAt * 1000);
         console.log('notify');
         console.log(message.member.id + search.title);
         reply(message, search, 1);
@@ -68,6 +68,7 @@ client.registerCommandAlias('notify', 'notifyme');
 client.registerCommandAlias('n', 'notifyme');
 
 client.registerCommand('unnotifyme', async (message, args) => {
+  if (!args.length) return;
   let c;
   let vars = {
     status: 'RELEASING',
@@ -85,7 +86,7 @@ client.registerCommand('unnotifyme', async (message, args) => {
     return;
   }
   const searchList = await apiCall(vars);
-  if (searchList.errors || !searchList.data.Page.media[0].title) return;
+  if (searchList.errors || !searchList.data.Page.media[0] || !searchList.data.Page.media[0].title) return;
   if (searchList.data.Page.media[0]) {
     // console.log(searchList.data.Page.media[0].title);
     if (searchList.data.Page.media[0].id === Number(vars.id) || searchList.data.Page.media[0].idMal === Number(vars.idMal)) {
@@ -144,6 +145,7 @@ function bigBrother() {
 }
 
 function argParse(args, v) {
+  const argList = ['-t', '-mal', '-ani', '-n'];
   const vars = v;
   const types = ['anime', 'manga'];
   const index = {
@@ -152,45 +154,52 @@ function argParse(args, v) {
     ani: -1,
     n: -1,
   };
-  if (args.includes('-t')) {
-    index.type = args.indexOf('-t') + 1;
-    const type = args[args.indexOf('-t') + 1].toLowerCase();
-    if (types.includes(type)) {
-      if (vars.type === undefined) {
-        vars.type = type.toUpperCase();
-      }
-    }
-  }
-  const ids = ['-mal', '-ani'];
-  if (args.includes(ids[0])) {
-    index.mal = args.indexOf(ids[0]) + 1;
-    if (vars.idMal === undefined) {
-      vars.idMal = args[index.mal];
-    }
-  }
-  if (args.includes(ids[1])) {
-    index.ani = args.indexOf(ids[1]) + 1;
-    if (vars.id === undefined && vars.idMal === undefined) {
-      vars.id = args[index.ani];
-    }
-  }
   vars.perPage = 1;
-  if (args.includes('-n')) {
-    index.n = args.indexOf('-n') + 1;
-    if (args[index.n] < 5) {
-      if (index.mal === -1 && index.ani === -1) {
-        vars.perPage = args[index.n];
+  argList.forEach((a) => {
+    if (args.includes(a)) {
+      if (a === '-t') {
+        index.type = args.indexOf(a) + 1;
+        const type = args[args.indexOf('-t') + 1].toLowerCase();
+        if (types.includes(type)) {
+          if (vars.type === undefined) {
+            vars.type = type.toUpperCase();
+          }
+        }
+      }
+      if (a === '-mal') {
+        if (args.includes(a)) {
+          index.mal = args.indexOf(a) + 1;
+          if (vars.idMal === undefined) {
+            vars.idMal = args[index.mal];
+          }
+        }
+      }
+      if (a === '-ani') {
+        if (args.includes(a)) {
+          index.ani = args.indexOf(a) + 1;
+          if (vars.id === undefined && vars.idMal === undefined) {
+            vars.id = args[index.ani];
+          }
+        }
+      }
+      if (a === '-n') {
+        if (args.includes(a)) {
+          index.n = args.indexOf(a) + 1;
+          if (args[index.n] < 5) {
+            if (index.mal === -1 && index.ani === -1) {
+              vars.perPage = args[index.n];
+            }
+          }
+        }
+        if (!args.includes('-n')) {
+          vars.perPage = 1;
+        }
       }
     }
-  }
-  if (!args.includes('-n')) {
-    vars.perPage = 1;
-  }
+  });
 
   const search = [];
   const values = Object.values(index);
-  console.log(values);
-  console.log(index);
   args.forEach((a, i) => {
     if (values.every(t => t < i)) {
       search.push(a);
@@ -346,9 +355,7 @@ client.registerCommand('search', async (message, args) => {
     page: 1,
   };
   vars = await argParse(args, vars);
-  console.log(vars);
   const searchList = await apiCall(vars);
-  console.log(searchList);
   if (searchList.errors || !searchList.data.Page.media[0].title) return;
   const search2 = await searchList.data.Page.media;
   const msg = [];
