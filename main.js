@@ -39,18 +39,21 @@ client.registerCommand('notifyme', async (message, args) => {
   console.log(searchList.data.Page.media[0]);
   if (searchList.errors || !searchList.data.Page.media[0] || !searchList.data.Page.media[0].title) return;
   if (searchList.data.Page.media[0]) {
-    // console.log(searchList.data.Page.media[0].title);
+    console.log(searchList.data.Page.media[0].title);
     if (searchList.data.Page.media[0].id === Number(vars.id) || searchList.data.Page.media[0].idMal === Number(vars.idMal)) {
       c = true;
     }
     if (c !== true) {
-      Object.keys(searchList.data.Page.media[0].title).forEach((k) => {
-        if (searchList.data.Page.media[0].title[k].toLowerCase() === vars.search.toLowerCase()) {
+      console.log('here\'s johnny');
+      await Object.values(searchList.data.Page.media[0].title).forEach((k) => {
+        if(!k) return;  
+        if (k.toLowerCase() === vars.search.toLowerCase()) {
           c = true;
         }
       });
     }
   }
+  console.log(c)
   if (c === true) {
     const search = searchList.data.Page.media[0];
     await db.all('SELECT * FROM watching WHERE malID = (?) AND userID = (?)', [search.idMal, message.member.id], (err, row) => {
@@ -100,13 +103,14 @@ client.registerCommand('unnotifyme', async (message, args) => {
   const searchList = await apiCall(vars);
   if (searchList.errors || !searchList.data.Page.media[0] || !searchList.data.Page.media[0].title) return;
   if (searchList.data.Page.media[0]) {
-    // console.log(searchList.data.Page.media[0].title);
+    console.log(searchList.data.Page.media[0]);
     if (searchList.data.Page.media[0].id === Number(vars.id) || searchList.data.Page.media[0].idMal === Number(vars.idMal)) {
       c = true;
     }
     if (c !== true) {
-      Object.keys(searchList.data.Page.media[0].title).forEach((k) => {
-        if (searchList.data.Page.media[0].title[k].toLowerCase() === vars.search.toLowerCase()) {
+      Object.values(searchList.data.Page.media[0].title).forEach((k) => {
+        if (!k) return;
+        if (k.toLowerCase() === vars.search.toLowerCase()) {
           c = true;
         }
       });
