@@ -4,14 +4,8 @@
 /* eslint-disable no-plusplus */
 const Eris = require('eris');
 const fetch = require('node-fetch');
-const sqlite3 = require('sqlite3');
 const login = require('./config/login.json');
-const { promisify } = require('util');
-
-const db = new sqlite3.Database('database.db');
-
-const dbAll = promisify(db.all).bind(db);
-const dbRun = promisify(db.run).bind(db);
+const db = require('./src/databaseHandler');
 
 const malLink = 'https://myanimelist.net/anime/';
 const aniLink = 'https://anilist.co/anime/';
@@ -61,32 +55,30 @@ client.registerCommand('notifyme', async (message, args) => {
   console.log(c)
   if (c === true) {
     const search = searchList.data.Page.media[0];
-      const row = await dbAll('SELECT * FROM watching WHERE malID = (?) AND userID = (?)', [search.idMal, message.member.id]);
-      if (err || row.length === 0) {
-        await dbRun('INSERT INTO watching (userID, malID, aniID, nextEP, title, notified) values (?,?,?,?,?,?)',
-          [message.member.id,
-            search.idMal,
-            search.id,
-            search.nextAiringEpisode.airingAt,
-            search.title.romaji,
-            0
-          ]);
-        // const d = new Date(search.nextAiringEpisode.airingAt * 1000);
-        console.log('notify');
-        console.log(message.member.id + search.title);
-        const imageURL = search.coverImage.large;
-        const sub = search.title.romaji;
-        const final = [{
-          name: `You will now be notified when ${search.title.romaji} goes live!`,
-          value: `[MAL](${malLink + search.idMal})\n [Anilist](${aniLink + search.id})`,
-        }];
-        const res = {
-          sub,
-          final,
-          imageURL,
-        };
-        messageSender(1, message.channel.id, res);
-      }
+    const row = await db.SelectWatching(search.idMal, message.member.id)
+    if (err || row.length === 0) {
+      await db.InsertWatching(message.member.id,
+        search.idMal,
+        search.id,
+        search.nextAiringEpisode.airingAt,
+        search.title.romaji,
+        0);
+      // const d = new Date(search.nextAiringEpisode.airingAt * 1000);
+      console.log('notify');
+      console.log(message.member.id + search.title);
+      const imageURL = search.coverImage.large;
+      const sub = search.title.romaji;
+      const final = [{
+        name: `You will now be notified when ${search.title.romaji} goes live!`,
+        value: `[MAL](${malLink + search.idMal})\n [Anilist](${aniLink + search.id})`,
+      }];
+      const res = {
+        sub,
+        final,
+        imageURL,
+      };
+      messageSender(1, message.channel.id, res);
+    }
 
   }
 }, { caseInsensitive: true });
@@ -104,9 +96,9 @@ client.registerCommand('unnotifyme', async (message, args) => {
   };
   vars = await argParse(args, vars);
   if (vars.search === 'all') {
-      const row = await dbAll('SELECT * FROM watching WHERE userID = (?)', [message.member.id]);
+      const row = await db.SelectWatching(null, message.member.id);
       if (err || row.length === 0) return;
-      await dbRun('DELETE FROM watching WHERE userID = (?)', [message.member.id]);
+      await db.DeleteWatching(message.member.id)
       const res = `cleared notifications for ${message.member.username}`;
       messageSender(0, message.channel.id, res);
     return;
@@ -129,7 +121,7 @@ client.registerCommand('unnotifyme', async (message, args) => {
   }
   if (c === true) {
     const search = searchList.data.Page.media[0];
-    await dbRun('DELETE FROM watching WHERE malID = (?) AND userID = (?)', [search.idMal, message.member.id]);
+    db.DeleteWatching(search.idMal, message.member.id);
     console.log('unnotify');
     console.log(message.member.id + search.title);
     const imageURL = search.coverImage.large;
@@ -152,7 +144,7 @@ client.registerCommandAlias('unnotify', 'unnotifyme');
 function bigBrother() {
   console.log(`Im always watching ${new Date()}`);
   setInterval(async () => {
-      const row = await dbAll('select * FROM watching');
+      const row = db.SelectWatching();
       const notIDs = [];
       const time = Math.round((new Date()).getTime() / 1000);
       row.forEach((e) => {
@@ -161,22 +153,22 @@ function bigBrother() {
         }
       });
       notIDs.forEach(async (ID) => {
-      const row2 = await dbAll('SELECT * FROM watching WHERE malID = (?)', [ID]);
-        const uIDs = [];
-        let nData = {};
-        row2.forEach((e) => {
-          uIDs.push(e.userID);
-          nData = {
-            malID: ID,
-            aniID: e.aniID,
-            title: e.title,
-            nextEP: e.nextEP,
-          };
-        });
-        nData.userID = uIDs;
-        console.log(`notification: ${nData}`);
-        notificationCreator(nData);
+      const row2 = await db.SelectWatching(ID);
+      const uIDs = [];
+      let nData = {};
+      row2.forEach((e) => {
+        uIDs.push(e.userID);
+        nData = {
+          malID: ID,
+          aniID: e.aniID,
+          title: e.title,
+          nextEP: e.nextEP,
+        };
       });
+      nData.userID = uIDs;
+      console.log(`notification: ${nData}`);
+      notificationCreator(nData);
+    });
   }, watchingTimeout);
 }
 
@@ -267,7 +259,7 @@ function argParse(args, v) {
 async function checkUpdate() {
   setInterval(() => {
     console.log('checking for updated times');
-    const row = await dbRun('SELECT * FROM watching WHERE notified = (?)', [1]);
+    const row = db.SelectWatching(null, null, notified)
       if (row.length !== 0) {
         row.forEach((e, index) => {
           setTimeout(async () => {
@@ -280,12 +272,12 @@ async function checkUpdate() {
             const searchList = await apiCall(vars);
             const res = searchList.data.Page.media[0];
             if (!res.nextAiringEpisode) {
-              await dbRun('DELETE FROM watching WHERE malID = (?)', [e.malID])
+              await db.DeleteWatching(e.malID, null);
               return;
             }
             if (e.nextEP !== res.nextAiringEpisode.airingAt && e.nextEP < res.nextAiringEpisode.airingAt) {
               console.log(`Updating ${e.malID} airtime`);
-              await dbRun('UPDATE watching SET notified = (?), nextEP = (?) WHERE malID = (?)', [0, res.nextAiringEpisode.airingAt, e.malID])
+              db.UpdateWatching(0, res.nextAiringEpisode.airingAt, e.malID);
             }
           }, 2500 * index);
         });
@@ -355,7 +347,7 @@ async function notificationCreator(IDs) {
   IDs.userID.forEach(async (uID) => {
     const chat = await client.getDMChannel(uID);
     messageSender(1, chat.id, res);
-    await dbRun('UPDATE watching SET notified = (?) WHERE malID = (?) AND userID = (?)', [1, IDs.malID, uID]);
+    db.UpdateWatching(1, null, IDs.malID, uID);
   });
 }
 
