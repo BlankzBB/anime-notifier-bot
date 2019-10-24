@@ -3,9 +3,10 @@
 /* eslint-disable no-console */
 /* eslint-disable no-plusplus */
 const Eris = require('eris');
-const fetch = require('node-fetch');
 const login = require('./config/login.json');
 const db = require('./src/databaseHandler');
+const api = require('./src/apiHandler');
+
 
 const malLink = 'https://myanimelist.net/anime/';
 const aniLink = 'https://anilist.co/anime/';
@@ -34,7 +35,7 @@ client.registerCommand('notifyme', async (message, args) => {
     perPage: 1,
   };
   vars = await argParse(args, vars);
-  const searchList = await apiCall(vars);
+  const searchList = await api.call(vars);
   console.log(searchList.data.Page.media[0]);
   if (searchList.errors || !searchList.data.Page.media[0] || !searchList.data.Page.media[0].title) return;
   if (searchList.data.Page.media[0]) {
@@ -103,7 +104,7 @@ client.registerCommand('unnotifyme', async (message, args) => {
       messageSender(0, message.channel.id, res);
     return;
   }
-  const searchList = await apiCall(vars);
+  const searchList = await api.call(vars);
   if (searchList.errors || !searchList.data.Page.media[0] || !searchList.data.Page.media[0].title) return;
   if (searchList.data.Page.media[0]) {
     console.log(searchList.data.Page.media[0]);
@@ -269,7 +270,7 @@ async function checkUpdate() {
               page: 1,
               perPage: 1,
             };
-            const searchList = await apiCall(vars);
+            const searchList = await api.call(vars);
             const res = searchList.data.Page.media[0];
             if (!res.nextAiringEpisode) {
               await db.DeleteWatching(e.malID, null);
@@ -330,7 +331,7 @@ async function notificationCreator(IDs) {
     page: 1,
     perPage: 1,
   };
-  const searchList = await apiCall(vars);
+  const searchList = await api.call(vars);
   const search = searchList.data.Page.media[0];
   const imageURL = search.coverImage.large;
   const airingEP = search.nextAiringEpisode.episode;
@@ -351,32 +352,12 @@ async function notificationCreator(IDs) {
   });
 }
 
-async function apiCall(vars) {
-  const options = {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      query,
-      variables: vars,
-    }),
-  };
-
-  console.log('calling API');
-  const searchList = await fetch(apiURL, options)
-    .then(res => res.json());
-  if (searchList.message) console.log(searchList.message);
-  return searchList;
-}
-
 client.registerCommand('search', async (message, args) => {
   let vars = {
     page: 1,
   };
   vars = await argParse(args, vars);
-  const searchList = await apiCall(vars);
+  const searchList = await api.call(vars);
   if (searchList.errors || !searchList.data.Page.media[0].title) return;
   const search2 = await searchList.data.Page.media;
   const final = [];
