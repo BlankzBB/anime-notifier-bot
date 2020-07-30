@@ -5,7 +5,7 @@
 const Eris = require('eris');
 const fetch = require('node-fetch');
 const sqlite3 = require('sqlite3');
-const login = require('./config/login.json');
+const login = require('./configs/login.json');
 
 const malLink = 'https://myanimelist.net/anime/';
 const aniLink = 'https://anilist.co/anime/';
